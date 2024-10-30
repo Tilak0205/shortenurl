@@ -1,0 +1,121 @@
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import Redis from 'ioredis';
+import { v4 as uuidv4 } from 'uuid';
+import { CreateUrlDto } from './dto/create-url.dto';
+import { Url } from './url.entity';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+
+@Injectable()
+export class UrlService {
+  private redisClient = new Redis();
+  private readonly urlPrefix = 'url:';
+  private readonly baseUrl: string;
+
+  constructor(private configService: ConfigService) {
+    this.baseUrl =
+      this.configService.get<string>('BASE_URL') ||
+      'http://localhost:3000/url/';
+  }
+  async shortenUrl(createUrlDto: CreateUrlDto): Promise<string> {
+    let { originalUrl } = createUrlDto;
+    const { customAlias, expiration } = createUrlDto;
+    const shortUrlId = customAlias || uuidv4().slice(0, 6);
+
+    // Ensure the original URL has a valid scheme (http or https)
+    if (!/^https?:\/\//i.test(originalUrl)) {
+      originalUrl = `https://${originalUrl}`;
+    }
+
+    const urlExists = await this.redisClient.exists(
+      this.urlPrefix + shortUrlId,
+    );
+    if (urlExists) {
+      throw new ConflictException('Custom alias already exists');
+    }
+
+    const urlData = new Url(shortUrlId, originalUrl, expiration);
+    await this.redisClient.set(
+      `${this.urlPrefix}${shortUrlId}`,
+      JSON.stringify(urlData),
+    );
+
+    const fullShortUrl = `${this.baseUrl}${shortUrlId}`;
+    return fullShortUrl;
+  }
+
+  async getOriginalUrl(shortUrl: string, req: any): Promise<string> {
+    const urlData = await this.redisClient.get(`${this.urlPrefix}${shortUrl}`);
+
+    if (!urlData) {
+      throw new NotFoundException('Short URL not found');
+    }
+
+    const url: Url = JSON.parse(urlData);
+
+    if (url.expiration && new Date(url.expiration) < new Date()) {
+      await this.redisClient.del(`${this.urlPrefix}${shortUrl}`);
+      throw new NotFoundException('Short URL has expired');
+    }
+
+    url.hits += 1;
+
+    const location = await this.getLocationFromIP(req.ip);
+    const browser = this.parseUserAgent(req.headers['user-agent']);
+
+    // Update analytics data
+    url.analytics = url.analytics || [];
+    url.analytics.push({
+      timestamp: new Date().toISOString(),
+      location: location || 'Unknown',
+      browser: browser || 'Unknown',
+    });
+
+    // Save updated data in Redis
+    await this.redisClient.set(
+      `${this.urlPrefix}${shortUrl}`,
+      JSON.stringify(url),
+    );
+
+    return url.originalUrl;
+  }
+
+  private async getLocationFromIP(ip: string): Promise<string | null> {
+    // If the IP is localhost, return a placeholder location for testing purposes
+    if (ip === '::1' || ip === '127.0.0.1') {
+      return 'Localhost';
+    }
+
+    try {
+      const response = await axios.get(
+        `https://ipinfo.io/${ip}/geo?token=3b070a4db0488f`,
+      );
+      const data = response.data;
+
+      console.log('Fetched location data:', data);
+      return `${data.city}, ${data.region}, ${data.country}`;
+    } catch (error) {
+      console.error('Error fetching location:', error);
+      return null;
+    }
+  }
+
+  private parseUserAgent(userAgent: string): string {
+    if (!userAgent) return 'Unknown';
+    if (userAgent.includes('Chrome')) return 'Chrome';
+    if (userAgent.includes('Firefox')) return 'Firefox';
+    if (userAgent.includes('Safari')) return 'Safari';
+    return 'Other';
+  }
+
+  async getStats(shortUrl: string): Promise<Url> {
+    const urlData = await this.redisClient.get(`${this.urlPrefix}${shortUrl}`);
+    if (!urlData) throw new NotFoundException('Short URL not found');
+
+    return JSON.parse(urlData);
+  }
+}
