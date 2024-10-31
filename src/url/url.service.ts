@@ -12,11 +12,13 @@ import axios from 'axios';
 
 @Injectable()
 export class UrlService {
-  private redisClient = new Redis();
+  private redisClient: Redis;
   private readonly urlPrefix = 'url:';
   private readonly baseUrl: string;
 
   constructor(private configService: ConfigService) {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    this.redisClient = new Redis(redisUrl);
     this.baseUrl =
       this.configService.get<string>('BASE_URL') ||
       'http://localhost:3000/url/';
