@@ -28,7 +28,7 @@ export class UrlService {
     const { customAlias, expiration } = createUrlDto;
     const shortUrlId = customAlias || uuidv4().slice(0, 6);
 
-    // Ensure the original URL has a valid scheme (http or https)
+    // Check if the URL is a valid (http or https)
     if (!/^https?:\/\//i.test(originalUrl)) {
       originalUrl = `https://${originalUrl}`;
     }
@@ -72,8 +72,6 @@ export class UrlService {
       req.headers['x-real-ip'] ||
       (req.ip === '::1' ? '127.0.0.1' : req.ip);
 
-    console.log('Detected client IP:', clientIp);
-
     const location = await this.getLocationFromIP(clientIp);
     const browser = this.parseUserAgent(req.headers['user-agent']);
 
@@ -94,14 +92,12 @@ export class UrlService {
   }
 
   private async getLocationFromIP(ip: string): Promise<string | null> {
-    console.log('ip', ip);
-    // If the IP is localhost, return a placeholder location for testing purposes
+    // If the IP is localhost, return a location for testing purposes
     if (ip === '::1' || ip === '127.0.0.1') {
       return 'Localhost';
     }
 
     try {
-      // Use ip-api.com API to get location data
       const response = await axios.get(`http://ip-api.com/json/${ip}`);
       const data = response.data;
 
@@ -110,7 +106,6 @@ export class UrlService {
         return null;
       }
 
-      console.log('Fetched location data:', data);
       return `${data.city}, ${data.regionName}, ${data.country}`;
     } catch (error) {
       console.error('Error fetching location:', error);
