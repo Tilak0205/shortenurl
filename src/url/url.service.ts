@@ -1,8 +1,10 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException, HttpStatus, HttpException
-} from "@nestjs/common";
+  ConflictException,
+  HttpStatus,
+  HttpException,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { CreateUrlDto } from './dto/create-url.dto';
