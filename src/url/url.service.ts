@@ -66,10 +66,17 @@ export class UrlService {
 
     url.hits += 1;
 
-    const location = await this.getLocationFromIP(req.ip);
+    const clientIp =
+      req.headers['x-forwarded-for']?.split(',').shift() ||
+      req.headers['cf-connecting-ip'] ||
+      req.headers['x-real-ip'] ||
+      (req.ip === '::1' ? '127.0.0.1' : req.ip);
+
+    console.log('Detected client IP:', clientIp);
+
+    const location = await this.getLocationFromIP(clientIp);
     const browser = this.parseUserAgent(req.headers['user-agent']);
 
-    // Update analytics data
     url.analytics = url.analytics || [];
     url.analytics.push({
       timestamp: new Date().toISOString(),
@@ -87,19 +94,24 @@ export class UrlService {
   }
 
   private async getLocationFromIP(ip: string): Promise<string | null> {
+    console.log('ip', ip);
     // If the IP is localhost, return a placeholder location for testing purposes
     if (ip === '::1' || ip === '127.0.0.1') {
       return 'Localhost';
     }
 
     try {
-      const response = await axios.get(
-        `https://ipinfo.io/${ip}/geo?token=3b070a4db0488f`,
-      );
+      // Use ip-api.com API to get location data
+      const response = await axios.get(`http://ip-api.com/json/${ip}`);
       const data = response.data;
 
+      if (data.status === 'fail') {
+        console.error('Error fetching location:', data.message);
+        return null;
+      }
+
       console.log('Fetched location data:', data);
-      return `${data.city}, ${data.region}, ${data.country}`;
+      return `${data.city}, ${data.regionName}, ${data.country}`;
     } catch (error) {
       console.error('Error fetching location:', error);
       return null;
