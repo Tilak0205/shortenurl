@@ -10,8 +10,9 @@ export class UrlController {
   @Post('shorten')
   async shorten(
     @Body() createUrlDto: CreateUrlDto,
+    @Req() req: Request,
   ): Promise<{ shortUrl: string }> {
-    const shortUrl = await this.urlService.shortenUrl(createUrlDto);
+    const shortUrl = await this.urlService.shortenUrl(createUrlDto, req);
     return { shortUrl };
   }
 
